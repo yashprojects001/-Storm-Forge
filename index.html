@@ -1,0 +1,924 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Thunder Temple Control Center</title>
+  <style>
+    :root{
+      --bg0:#04070f;
+      --bg1:#071325;
+      --bg2:#0b2342;
+      --panel:rgba(9,18,34,.72);
+      --panel2:rgba(12,25,46,.55);
+      --line:rgba(140,210,255,.18);
+      --text:#eaf7ff;
+      --muted:#9db4c7;
+      --cyan:#67e8ff;
+      --blue:#4ea8ff;
+      --gold:#ffd76a;
+      --lime:#8effb0;
+      --red:#ff7c91;
+      --shadow:rgba(0,0,0,.35);
+    }
+    *{box-sizing:border-box}
+    html,body{margin:0;height:100%;overflow:hidden;background:
+      radial-gradient(circle at 50% 5%, rgba(95,170,255,.16), transparent 24%),
+      radial-gradient(circle at 70% 18%, rgba(255,215,106,.07), transparent 20%),
+      linear-gradient(180deg,var(--bg2),var(--bg1) 36%,var(--bg0) 100%);
+      color:var(--text);font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
+    canvas#bg{position:fixed;inset:0;width:100%;height:100%;display:block;z-index:0}
+    .noise,.vignette,.scanlines{position:fixed;inset:0;pointer-events:none;z-index:2}
+    .noise{
+      opacity:.12;mix-blend-mode:screen;
+      background-image: radial-gradient(rgba(255,255,255,.18) 0.6px, transparent 0.7px);
+      background-size: 4px 4px;
+      animation: drift 18s linear infinite;
+    }
+    .vignette{
+      background: radial-gradient(circle at center, transparent 42%, rgba(0,0,0,.2) 72%, rgba(0,0,0,.62) 100%);
+    }
+    .scanlines{
+      opacity:.08;
+      background: repeating-linear-gradient(to bottom, rgba(140,210,255,.12) 0, rgba(140,210,255,.02) 1px, transparent 2px, transparent 7px);
+    }
+    .app{position:relative;z-index:3;height:100%;display:grid;grid-template-rows:auto 1fr auto;gap:14px;padding:16px}
+    .topbar{display:flex;align-items:center;justify-content:space-between;gap:12px}
+    .brand{display:flex;align-items:center;gap:14px;min-width:0}
+    .sigil{width:54px;height:54px;border-radius:16px;border:1px solid rgba(140,210,255,.22);background:
+      radial-gradient(circle at 35% 35%, rgba(255,255,255,.95), rgba(103,232,255,.82) 12%, rgba(78,168,255,.18) 42%, rgba(0,0,0,0) 66%),
+      linear-gradient(135deg, rgba(255,215,106,.25), rgba(103,232,255,.06));
+      box-shadow:0 0 32px rgba(103,232,255,.22), inset 0 0 18px rgba(255,255,255,.08);
+      position:relative;overflow:hidden;animation:pulse 4s ease-in-out infinite}
+    .sigil:before,.sigil:after{content:"";position:absolute;inset:12px;border-radius:12px;border:1px solid rgba(255,255,255,.16);transform:rotate(45deg)}
+    .sigil:after{inset:18px;border-color:rgba(255,215,106,.2);animation:spin 14s linear infinite}
+    .titleWrap{min-width:0}
+    h1{margin:0;font-size:clamp(1.25rem,2.2vw,2rem);letter-spacing:.22em;text-transform:uppercase;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;background:linear-gradient(90deg,#fff,#9fefff 40%,#ffd76a 80%);-webkit-background-clip:text;background-clip:text;color:transparent}
+    .subtitle{margin:4px 0 0;color:var(--muted);font-size:.92rem;line-height:1.35}
+    .statusBar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;justify-content:flex-end}
+    .pill{padding:10px 14px;border-radius:999px;border:1px solid rgba(140,210,255,.16);background:rgba(6,13,24,.4);backdrop-filter:blur(14px);box-shadow:0 8px 24px rgba(0,0,0,.2);font-size:.86rem}
+    .pill strong{color:#fff}
+    .grid{display:grid;grid-template-columns:320px minmax(0,1fr) 330px;gap:14px;min-height:0}
+    .panel{min-height:0;border:1px solid rgba(140,210,255,.14);background:linear-gradient(180deg,var(--panel),rgba(8,15,28,.55));backdrop-filter:blur(18px);border-radius:24px;box-shadow:0 18px 60px var(--shadow),inset 0 1px 0 rgba(255,255,255,.05);overflow:hidden}
+    .panelHeader{padding:18px 18px 14px;border-bottom:1px solid rgba(140,210,255,.11);display:flex;align-items:center;justify-content:space-between;gap:10px}
+    .panelHeader h2{margin:0;font-size:1rem;letter-spacing:.18em;text-transform:uppercase;color:#f0fbff}
+    .panelHeader span{color:var(--muted);font-size:.8rem;letter-spacing:.12em;text-transform:uppercase}
+    .panelBody{padding:16px;min-height:0;display:flex;flex-direction:column;gap:14px}
+
+    .metricGrid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+    .metric{padding:14px;border-radius:18px;background:rgba(255,255,255,.03);border:1px solid rgba(140,210,255,.12)}
+    .metric .k{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:9px;font-size:.78rem;letter-spacing:.16em;text-transform:uppercase;color:#b8cad8}
+    .metric .v{font-size:1.35rem;font-weight:800;line-height:1;color:#fff}
+    .bar{height:10px;margin-top:10px;border-radius:999px;background:rgba(255,255,255,.07);overflow:hidden}
+    .bar>div{height:100%;border-radius:inherit;background:linear-gradient(90deg,var(--cyan),var(--gold));box-shadow:0 0 18px rgba(103,232,255,.35);width:40%}
+    .bar.red>div{background:linear-gradient(90deg,#ff889b,#ff5f87)}
+    .bar.green>div{background:linear-gradient(90deg,#80ffd0,#57ffa2)}
+    .bar.blue>div{background:linear-gradient(90deg,#67e8ff,#4ea8ff)}
+
+    .controls{display:grid;gap:10px}
+    .btnRow{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+    button{appearance:none;border:1px solid rgba(140,210,255,.18);background:linear-gradient(180deg,rgba(15,31,59,.92),rgba(8,17,30,.96));color:#fff;border-radius:18px;padding:13px 14px;font:inherit;font-weight:700;letter-spacing:.08em;text-transform:uppercase;cursor:pointer;transition:transform .16s ease,box-shadow .16s ease,border-color .16s ease,filter .16s ease;box-shadow:0 10px 26px rgba(0,0,0,.22),inset 0 1px 0 rgba(255,255,255,.04)}
+    button:hover{transform:translateY(-2px);border-color:rgba(103,232,255,.45);box-shadow:0 14px 34px rgba(0,0,0,.32),0 0 16px rgba(103,232,255,.08)}
+    button:active{transform:translateY(0) scale(.98)}
+    .btnAccent{background:linear-gradient(135deg,rgba(103,232,255,.25),rgba(255,215,106,.16));border-color:rgba(255,215,106,.22)}
+    .btnDanger{background:linear-gradient(135deg,rgba(255,124,145,.2),rgba(103,232,255,.06))}
+    .selectRow,.sliderRow{display:grid;grid-template-columns:1fr auto;align-items:center;gap:10px}
+    select,input[type=range]{width:100%}
+    select{padding:12px 14px;border-radius:16px;background:rgba(255,255,255,.04);color:#fff;border:1px solid rgba(140,210,255,.14);outline:none}
+    option{background:#0b1426}
+    input[type=range]{accent-color:#67e8ff}
+    .note{padding:12px 14px;border-radius:16px;background:rgba(255,255,255,.03);border:1px solid rgba(140,210,255,.12);color:#dcecff;line-height:1.55;font-size:.92rem}
+
+    .center{display:grid;grid-template-rows:auto 1fr auto;min-height:0;gap:14px}
+    .hero{padding:18px;border-radius:24px;min-height:0;display:grid;grid-template-columns:1.2fr .8fr;gap:14px}
+    .hero .scene{position:relative;min-height:0;border-radius:22px;overflow:hidden;border:1px solid rgba(140,210,255,.12);background:linear-gradient(180deg,rgba(5,12,22,.5),rgba(10,22,40,.24));}
+    #radar{width:100%;height:100%;display:block}
+    .legend{display:grid;gap:10px;align-content:start}
+    .legendCard{padding:14px;border-radius:18px;background:rgba(255,255,255,.03);border:1px solid rgba(140,210,255,.12)}
+    .legendCard .t{font-size:.76rem;letter-spacing:.18em;text-transform:uppercase;color:#b8cad8;margin-bottom:8px}
+    .legendCard .b{font-weight:800;font-size:1.08rem}
+    .legendCard .s{margin-top:6px;color:var(--muted);line-height:1.5;font-size:.9rem}
+    .miniGrid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+    .mini{padding:12px;border-radius:16px;background:rgba(255,255,255,.03);border:1px solid rgba(140,210,255,.12)}
+    .mini .k{font-size:.72rem;letter-spacing:.16em;text-transform:uppercase;color:#b6cadb}
+    .mini .v{margin-top:6px;font-size:1.1rem;font-weight:800}
+
+    .bottom{display:grid;grid-template-columns:1.2fr .8fr;gap:14px;min-height:0}
+    .logs{display:flex;flex-direction:column;min-height:0}
+    .logList{padding:14px 16px 16px;overflow:auto;display:grid;gap:10px;min-height:0}
+    .log{padding:12px 13px;border-radius:15px;background:rgba(255,255,255,.03);border:1px solid rgba(140,210,255,.1);line-height:1.5;font-size:.92rem;color:#eaf7ff}
+    .log small{display:block;color:#a9c0d2;margin-top:3px;font-size:.76rem;letter-spacing:.08em;text-transform:uppercase}
+    .chartBox{padding:16px;display:grid;gap:12px}
+    .chartHead{display:flex;align-items:center;justify-content:space-between;gap:10px}
+    .chartHead strong{letter-spacing:.16em;text-transform:uppercase;font-size:.8rem}
+    .chip{padding:8px 10px;border-radius:999px;background:rgba(255,255,255,.04);border:1px solid rgba(140,210,255,.1);font-size:.8rem;color:#dcecff}
+    #trend{width:100%;height:210px;display:block;border-radius:18px;background:rgba(0,0,0,.12);border:1px solid rgba(140,210,255,.1)}
+    .footerStats{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
+    .fstat{padding:12px 14px;border-radius:18px;background:rgba(255,255,255,.03);border:1px solid rgba(140,210,255,.12)}
+    .fstat .k{font-size:.72rem;letter-spacing:.18em;text-transform:uppercase;color:#b6cadb}
+    .fstat .v{margin-top:6px;font-size:1.05rem;font-weight:800}
+
+    .mapHint{position:absolute;left:16px;bottom:16px;padding:11px 14px;border-radius:16px;background:rgba(5,12,22,.7);border:1px solid rgba(140,210,255,.16);backdrop-filter:blur(12px);font-size:.9rem;color:#eaf7ff;max-width:80%;box-shadow:0 10px 30px rgba(0,0,0,.25)}
+    .titleTag{display:inline-flex;align-items:center;gap:8px;padding:8px 12px;border-radius:999px;background:rgba(255,255,255,.04);border:1px solid rgba(140,210,255,.12);font-size:.78rem;letter-spacing:.12em;text-transform:uppercase;color:#d7edf8}
+    .dot{width:8px;height:8px;border-radius:50%;background:var(--cyan);box-shadow:0 0 14px var(--cyan)}
+
+    @keyframes pulse{0%,100%{transform:scale(1)}50%{transform:scale(1.05)}}
+    @keyframes spin{to{transform:rotate(360deg)}}
+    @keyframes drift{from{background-position:0 0}to{background-position:80px 120px}}
+    @media (max-width: 1200px){
+      html,body{overflow:auto}
+      .app{height:auto;min-height:100%;overflow:auto}
+      .grid,.bottom,.hero{grid-template-columns:1fr}
+      .center,.logs{min-height:420px}
+    }
+    @media (max-width: 760px){
+      .topbar{flex-direction:column;align-items:stretch}
+      .statusBar{justify-content:flex-start}
+      .metricGrid,.footerStats,.miniGrid,.btnRow{grid-template-columns:1fr 1fr}
+      .hero{padding:14px}
+      .panel{border-radius:20px}
+      .grid{gap:12px}
+      .footerStats{grid-template-columns:1fr 1fr}
+      .metricGrid{grid-template-columns:1fr}
+      .btnRow{grid-template-columns:1fr}
+    }
+  </style>
+</head>
+<body>
+  <canvas id="bg"></canvas>
+  <div class="noise"></div>
+  <div class="vignette"></div>
+  <div class="scanlines"></div>
+
+  <div class="app">
+    <header class="topbar">
+      <div class="brand">
+        <div class="sigil"></div>
+        <div class="titleWrap">
+          <h1>Thunder Temple Control Center</h1>
+          <div class="subtitle">Floating storm-engine dashboard for cloud routing, lightning harvesting, shield management, and forge activation.</div>
+        </div>
+      </div>
+      <div class="statusBar">
+        <div class="pill"><strong id="time">00:00</strong> UTC storm cycle</div>
+        <div class="pill">Mode: <strong id="mode">Balanced</strong></div>
+        <div class="pill">Anomalies: <strong id="anomalies">03</strong></div>
+      </div>
+    </header>
+
+    <section class="grid">
+      <aside class="panel">
+        <div class="panelHeader">
+          <h2>Temple Metrics</h2><span>live telemetry</span>
+        </div>
+        <div class="panelBody">
+          <div class="metricGrid">
+            <div class="metric"><div class="k"><span>Forge Charge</span><span id="chargePct">62%</span></div><div class="v" id="chargeVal">62</div><div class="bar blue"><div id="chargeBar"></div></div></div>
+            <div class="metric"><div class="k"><span>Storm Load</span><span id="loadPct">74%</span></div><div class="v" id="loadVal">74</div><div class="bar"><div id="loadBar"></div></div></div>
+            <div class="metric"><div class="k"><span>Shield Integrity</span><span id="shieldPct">88%</span></div><div class="v" id="shieldVal">88</div><div class="bar green"><div id="shieldBar"></div></div></div>
+            <div class="metric"><div class="k"><span>Island Stability</span><span id="stabilityPct">91%</span></div><div class="v" id="stabilityVal">91</div><div class="bar green"><div id="stabilityBar"></div></div></div>
+          </div>
+
+          <div class="note" id="forecast">Forecast: dense thunder banks over the eastern sky-reef. Lightning yield is optimal for harvesting.</div>
+
+          <div class="controls">
+            <div class="selectRow">
+              <div class="titleTag"><span class="dot"></span> Operating Pattern</div>
+              <select id="pattern">
+                <option>Balanced</option>
+                <option>Harvest</option>
+                <option>Defense</option>
+                <option>Overcharge</option>
+              </select>
+            </div>
+            <div class="sliderRow">
+              <div class="titleTag"><span class="dot"></span> Forge Output</div>
+              <input id="forgeSlider" type="range" min="0" max="100" value="62" />
+            </div>
+            <div class="btnRow">
+              <button class="btnAccent" id="harvestBtn">Harvest Lightning</button>
+              <button id="routeBtn">Route Clouds</button>
+              <button id="shieldBtn">Fortify Shields</button>
+              <button class="btnAccent" id="forgeBtn">Forge Core</button>
+            </div>
+            <button class="btnDanger" id="calmBtn">Emergency Calm</button>
+          </div>
+        </div>
+      </aside>
+
+      <section class="center">
+        <div class="panel hero">
+          <div class="scene">
+            <canvas id="radar"></canvas>
+            <div class="mapHint" id="mapHint">Click an island node to route power. Drag your cursor across the storm to bend cloud currents.</div>
+          </div>
+          <div class="legend">
+            <div class="legendCard">
+              <div class="t">Status Pulse</div>
+              <div class="b" id="statusHeadline">Storm field stable</div>
+              <div class="s" id="statusDesc">Lightning channels are aligned. The forge is listening.</div>
+            </div>
+            <div class="legendCard">
+              <div class="t">Detected Nodes</div>
+              <div class="miniGrid">
+                <div class="mini"><div class="k">Cloud Reefs</div><div class="v" id="cloudsV">12</div></div>
+                <div class="mini"><div class="k">Power Spires</div><div class="v" id="spiresV">06</div></div>
+                <div class="mini"><div class="k">Tempests</div><div class="v" id="tempestsV">04</div></div>
+              </div>
+            </div>
+            <div class="legendCard">
+              <div class="t">Temple Directive</div>
+              <div class="s">Harvest lightning to fill the forge. Keep island stability above 70% to prevent structural collapse.</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="bottom">
+          <div class="panel logs">
+            <div class="panelHeader"><h2>Storm Console</h2><span>activity log</span></div>
+            <div class="logList" id="logList"></div>
+          </div>
+          <div class="panel chartBox">
+            <div class="chartHead">
+              <strong>Live Energy Trend</strong>
+              <div class="chip" id="trendChip">last 60 cycles</div>
+            </div>
+            <canvas id="trend" width="600" height="260"></canvas>
+            <div class="footerStats">
+              <div class="fstat"><div class="k">Lightning Yield</div><div class="v" id="yieldVal">128 kW</div></div>
+              <div class="fstat"><div class="k">Cloud Routing</div><div class="v" id="routeVal">Optimal</div></div>
+              <div class="fstat"><div class="k">Shield Flux</div><div class="v" id="fluxVal">Stable</div></div>
+              <div class="fstat"><div class="k">Forge Temp</div><div class="v" id="tempVal">1,640°</div></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <aside class="panel">
+        <div class="panelHeader">
+          <h2>Systems</h2><span>automation</span>
+        </div>
+        <div class="panelBody">
+          <div class="legendCard">
+            <div class="t">Power Grid</div>
+            <div class="b">Temple nodes online</div>
+            <div class="s">Three lightning towers, two cloud vents, and the central forge ring are currently active.</div>
+          </div>
+
+          <div class="legendCard">
+            <div class="t">Orbital Weather</div>
+            <div class="b" id="weatherState">Thunderfront emerging</div>
+            <div class="s" id="weatherDesc">Low pressure pockets are opening above the floating islands.</div>
+          </div>
+
+          <div class="legendCard">
+            <div class="t">Runtime Modules</div>
+            <div class="s">• Cloud drift simulator<br>• Lightning chain renderer<br>• Stability governor<br>• Forge heat regulator<br>• Alert processor</div>
+          </div>
+
+          <div class="note">Tip: switch to <strong>Overcharge</strong> and use <strong>Forge Core</strong> after harvesting lightning. The map reacts in real time.</div>
+        </div>
+      </aside>
+    </section>
+
+    <footer class="panel">
+      <div class="panelHeader"><h2>Temple Readouts</h2><span>summary</span></div>
+      <div class="panelBody">
+        <div class="footerStats">
+          <div class="fstat"><div class="k">Power Reserve</div><div class="v" id="reserveVal">72%</div></div>
+          <div class="fstat"><div class="k">Aerial Coverage</div><div class="v" id="coverageVal">84%</div></div>
+          <div class="fstat"><div class="k">Risk Index</div><div class="v" id="riskVal">Low</div></div>
+          <div class="fstat"><div class="k">Temple Seal</div><div class="v" id="sealVal">Active</div></div>
+        </div>
+      </div>
+    </footer>
+  </div>
+
+  <script>
+    const bg = document.getElementById('bg');
+    const bctx = bg.getContext('2d');
+    const radar = document.getElementById('radar');
+    const rctx = radar.getContext('2d');
+    const trend = document.getElementById('trend');
+    const tctx = trend.getContext('2d');
+
+    const $ = (id) => document.getElementById(id);
+    const els = {
+      time:$('time'), mode:$('mode'), anomalies:$('anomalies'),
+      chargePct:$('chargePct'), chargeVal:$('chargeVal'), chargeBar:$('chargeBar'),
+      loadPct:$('loadPct'), loadVal:$('loadVal'), loadBar:$('loadBar'),
+      shieldPct:$('shieldPct'), shieldVal:$('shieldVal'), shieldBar:$('shieldBar'),
+      stabilityPct:$('stabilityPct'), stabilityVal:$('stabilityVal'), stabilityBar:$('stabilityBar'),
+      forecast:$('forecast'), statusHeadline:$('statusHeadline'), statusDesc:$('statusDesc'),
+      cloudsV:$('cloudsV'), spiresV:$('spiresV'), tempestsV:$('tempestsV'),
+      weatherState:$('weatherState'), weatherDesc:$('weatherDesc'),
+      yieldVal:$('yieldVal'), routeVal:$('routeVal'), fluxVal:$('fluxVal'), tempVal:$('tempVal'),
+      reserveVal:$('reserveVal'), coverageVal:$('coverageVal'), riskVal:$('riskVal'), sealVal:$('sealVal'),
+      pattern:$('pattern'), forgeSlider:$('forgeSlider'), logList:$('logList'), mapHint:$('mapHint'), trendChip:$('trendChip')
+    };
+
+    const state = {
+      w: innerWidth, h: innerHeight, dpr: Math.min(devicePixelRatio || 1, 2),
+      mouseX: innerWidth * 0.5, mouseY: innerHeight * 0.5,
+      targetX: innerWidth * 0.5, targetY: innerHeight * 0.5,
+      t: 0,
+      mode: 'Balanced',
+      charge: 62,
+      load: 74,
+      shield: 88,
+      stability: 91,
+      reserve: 72,
+      coverage: 84,
+      risk: 18,
+      seal: 1,
+      yield: 128,
+      temp: 1640,
+      cloudNodes: 12,
+      spires: 6,
+      tempests: 4,
+      logs: [],
+      trend: Array.from({length:60}, (_,i)=> 50 + Math.sin(i/6)*8 + (i%8)*1.4),
+      arcs: [],
+      rain: [],
+      clouds: [],
+      nodes: [],
+      bolts: [],
+      bursts: [],
+      alertLevel: 0,
+      overcharged: false
+    };
+
+    function clamp(v,min,max){return Math.max(min,Math.min(max,v))}
+    function lerp(a,b,t){return a+(b-a)*t}
+    function rand(min,max){return Math.random()*(max-min)+min}
+
+    function resize(){
+      state.w = innerWidth; state.h = innerHeight;
+      for (const c of [bg, radar]) {
+        c.width = Math.floor(innerWidth * state.dpr);
+        c.height = Math.floor(innerHeight * state.dpr);
+        c.style.width = innerWidth + 'px';
+        c.style.height = innerHeight + 'px';
+      }
+      trend.width = 600; trend.height = 260;
+      bctx.setTransform(state.dpr,0,0,state.dpr,0,0);
+      rctx.setTransform(state.dpr,0,0,state.dpr,0,0);
+      initScene();
+    }
+
+    function initScene(){
+      state.clouds = Array.from({length:14}, (_,i)=> ({
+        x: rand(-100, state.w+100), y: rand(40, state.h*0.38), r: rand(70,170),
+        vx: rand(0.08,0.28)*(Math.random()<0.5?-1:1), vy: rand(-0.02,0.03), alpha: rand(0.08,0.2), seed: rand(0,1000)
+      }));
+      state.rain = Array.from({length:220}, ()=> ({x:rand(0,state.w), y:rand(0,state.h), l:rand(8,24), s:rand(9,24)}));
+      state.nodes = [
+        {name:'Cloud Vent A', x:0.22, y:0.32, type:'cloud', power:18, active:true},
+        {name:'Cloud Vent B', x:0.72, y:0.25, type:'cloud', power:14, active:true},
+        {name:'Lightning Spire I', x:0.18, y:0.62, type:'spire', power:22, active:true},
+        {name:'Lightning Spire II', x:0.55, y:0.46, type:'spire', power:28, active:true},
+        {name:'Storm Anchor', x:0.82, y:0.64, type:'anchor', power:17, active:true},
+        {name:'Forge Core', x:0.49, y:0.57, type:'forge', power:35, active:true}
+      ];
+    }
+
+    function addLog(msg, tone='info'){
+      const ts = new Date();
+      const time = ts.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit', second:'2-digit'});
+      state.logs.unshift({msg, time, tone});
+      state.logs = state.logs.slice(0, 9);
+      renderLogs();
+    }
+
+    function renderLogs(){
+      els.logList.innerHTML = state.logs.map(l => `
+        <div class="log" style="border-color:${l.tone==='warn'?'rgba(255,124,145,.22)':l.tone==='good'?'rgba(142,255,176,.22)':'rgba(140,210,255,.12)'}">
+          ${l.msg}
+          <small>${l.time}</small>
+        </div>`).join('');
+    }
+
+    function setMode(mode){
+      state.mode = mode;
+      els.mode.textContent = mode;
+      if (mode === 'Balanced') {
+        state.load = 74; state.shield = 88; state.coverage = 84; state.risk = 18;
+      } else if (mode === 'Harvest') {
+        state.load = 88; state.charge += 4; state.yield += 10; state.risk = 28;
+      } else if (mode === 'Defense') {
+        state.shield = 96; state.stability += 2; state.risk = 10;
+      } else if (mode === 'Overcharge') {
+        state.load = 96; state.charge += 9; state.yield += 22; state.temp += 70; state.risk = 43; state.overcharged = true;
+      }
+      state.charge = clamp(state.charge, 0, 100);
+      state.load = clamp(state.load, 0, 100);
+      state.shield = clamp(state.shield, 0, 100);
+      state.stability = clamp(state.stability, 0, 100);
+      state.reserve = clamp(state.reserve + (mode==='Harvest'?4:0), 0, 100);
+      addLog(`Operating pattern switched to ${mode}.`, mode==='Overcharge' ? 'warn' : 'good');
+      els.statusHeadline.textContent = mode === 'Defense' ? 'Shield lattice engaged' : mode === 'Harvest' ? 'Lightning channels opened' : mode === 'Overcharge' ? 'Core under high load' : 'Storm field stable';
+      els.statusDesc.textContent = mode === 'Defense' ? 'Temple walls are reinforced against violent wind shear.' : mode === 'Harvest' ? 'Conductors are primed to absorb lightning discharge.' : mode === 'Overcharge' ? 'Thermal pressure is climbing. Monitor the forge core carefully.' : 'The temple is balanced across power, weather, and protection.';
+      updateMetrics();
+    }
+
+    function updateMetrics(){
+      els.chargePct.textContent = `${Math.round(state.charge)}%`; els.chargeVal.textContent = Math.round(state.charge); els.chargeBar.style.width = `${state.charge}%`;
+      els.loadPct.textContent = `${Math.round(state.load)}%`; els.loadVal.textContent = Math.round(state.load); els.loadBar.style.width = `${state.load}%`;
+      els.shieldPct.textContent = `${Math.round(state.shield)}%`; els.shieldVal.textContent = Math.round(state.shield); els.shieldBar.style.width = `${state.shield}%`;
+      els.stabilityPct.textContent = `${Math.round(state.stability)}%`; els.stabilityVal.textContent = Math.round(state.stability); els.stabilityBar.style.width = `${state.stability}%`;
+      els.yieldVal.textContent = `${Math.round(state.yield)} kW`;
+      els.tempVal.textContent = `${Math.round(state.temp).toLocaleString()}°`;
+      els.reserveVal.textContent = `${Math.round(state.reserve)}%`;
+      els.coverageVal.textContent = `${Math.round(state.coverage)}%`;
+      els.riskVal.textContent = state.risk < 25 ? 'Low' : state.risk < 45 ? 'Medium' : 'High';
+      els.sealVal.textContent = state.seal ? 'Active' : 'Breach';
+      els.cloudsV.textContent = String(state.cloudNodes).padStart(2,'0');
+      els.spiresV.textContent = String(state.spires).padStart(2,'0');
+      els.tempestsV.textContent = String(state.tempests).padStart(2,'0');
+    }
+
+    function harvestLightning(){
+      const gained = rand(8,16) + (state.mode==='Harvest'?8:0);
+      state.charge = clamp(state.charge + gained, 0, 100);
+      state.reserve = clamp(state.reserve + gained * 0.28, 0, 100);
+      state.yield += gained * 2.8;
+      state.temp += 20 + (state.mode==='Overcharge'?34:0);
+      state.load = clamp(state.load + 2, 0, 100);
+      state.stability = clamp(state.stability - 1.2, 0, 100);
+      state.arcs.push(makeArc(state.w*rand(0.2,0.8), 0, state.w*rand(0.2,0.8), state.h*rand(0.2,0.55), 20));
+      state.bursts.push({x: state.w*rand(0.25,0.75), y: state.h*rand(0.15,0.5), r: 0, life: 1});
+      addLog(`Lightning harvested. +${Math.round(gained)} charge routed to the forge.`, 'good');
+      flashHint('Harvest complete: charge routed to core');
+      maybeStress();
+      syncTrend();
+      updateMetrics();
+    }
+
+    function routeClouds(){
+      state.coverage = clamp(state.coverage + rand(4,9), 0, 100);
+      state.stability = clamp(state.stability + rand(1,5), 0, 100);
+      state.load = clamp(state.load - rand(1,4), 0, 100);
+      state.cloudNodes = Math.min(18, state.cloudNodes + 1);
+      state.arcs.push(makeArc(state.w*0.32, state.h*0.22, state.w*0.7, state.h*0.18, 26));
+      state.arcs.push(makeArc(state.w*0.18, state.h*0.63, state.w*0.55, state.h*0.46, 22));
+      addLog('Cloud routes realigned. Pressure corridors are now balanced.', 'good');
+      flashHint('Weather routing synced');
+      syncTrend();
+      updateMetrics();
+    }
+
+    function fortifyShields(){
+      state.shield = clamp(state.shield + rand(5,12), 0, 100);
+      state.stability = clamp(state.stability + rand(2,4), 0, 100);
+      state.risk = clamp(state.risk - 6, 0, 100);
+      state.seal = 1;
+      state.bursts.push({x: state.w*0.5, y: state.h*0.54, r: 0, life: 1});
+      addLog('Shield lattice reinforced across the temple perimeter.', 'good');
+      flashHint('Shield lattice reinforced');
+      syncTrend();
+      updateMetrics();
+    }
+
+    function forgeCore(){
+      if (state.charge < 28) {
+        addLog('Forge attempt failed: insufficient charge.', 'warn');
+        flashHint('Need more charge for forging');
+        return;
+      }
+      const heat = Math.min(220, 60 + state.charge * 1.7);
+      state.temp += heat;
+      state.yield += 24 + state.charge * 0.8;
+      state.charge = clamp(state.charge - rand(12,24), 0, 100);
+      state.reserve = clamp(state.reserve - rand(2,6), 0, 100);
+      state.stability = clamp(state.stability - rand(2,7), 0, 100);
+      state.load = clamp(state.load + 8, 0, 100);
+      state.risk = clamp(state.risk + 10, 0, 100);
+      state.overcharged = false;
+      spawnLightningBurst();
+      addLog(`Forge core activated. Thermal output surged by ${Math.round(heat)} units.`, 'warn');
+      flashHint('Forge core burning bright');
+      if (state.temp > 1850) {
+        state.seal = 0;
+        addLog('Warning: temple seal destabilized by excess heat.', 'warn');
+      }
+      syncTrend();
+      updateMetrics();
+    }
+
+    function emergencyCalm(){
+      state.charge = clamp(state.charge - 8, 0, 100);
+      state.load = clamp(state.load - 16, 0, 100);
+      state.shield = clamp(state.shield + 4, 0, 100);
+      state.stability = clamp(state.stability + 10, 0, 100);
+      state.risk = clamp(state.risk - 18, 0, 100);
+      state.temp = Math.max(1200, state.temp - 180);
+      state.seal = 1;
+      state.overcharged = false;
+      state.bursts.push({x: state.w*0.5, y: state.h*0.5, r: 0, life: 1});
+      addLog('Emergency calm engaged. Storm intensity reduced across all sectors.', 'good');
+      flashHint('Emergency calm active');
+      syncTrend();
+      updateMetrics();
+    }
+
+    function flashHint(text){
+      els.mapHint.textContent = text;
+      clearTimeout(flashHint._t);
+      flashHint._t = setTimeout(()=>{
+        els.mapHint.textContent = 'Click an island node to route power. Drag your cursor across the storm to bend cloud currents.';
+      }, 1800);
+    }
+
+    function spawnLightningBurst(x = state.w*0.55, y = state.h*0.28){
+      for (let i=0;i<5;i++) state.arcs.push(makeArc(x + rand(-60,60), 0, x + rand(-100,100), y + rand(-30,30), 26));
+      state.bursts.push({x, y, r: 0, life: 1.2});
+    }
+
+    function makeArc(x1,y1,x2,y2,jitter=18){
+      const pts = [[x1,y1]];
+      const segs = 18;
+      for (let i=1;i<segs;i++){
+        const t = i/segs;
+        const x = lerp(x1,x2,t) + rand(-jitter, jitter);
+        const y = lerp(y1,y2,t) + rand(-jitter*0.6, jitter*0.6);
+        pts.push([x,y]);
+      }
+      pts.push([x2,y2]);
+      return {pts, life: 1};
+    }
+
+    function maybeStress(){
+      if (state.charge > 92 || state.temp > 1880) {
+        state.risk = clamp(state.risk + 12, 0, 100);
+        state.stability = clamp(state.stability - 8, 0, 100);
+        state.seal = 0;
+        addLog('Critical stress detected: temple core is approaching overload.', 'warn');
+      }
+    }
+
+    function syncTrend(){
+      const value = clamp((state.charge * .42 + state.shield * .25 + state.stability * .2 + state.reserve * .13) + rand(-3,3), 0, 100);
+      state.trend.push(value);
+      if (state.trend.length > 60) state.trend.shift();
+      els.trendChip.textContent = `last ${state.trend.length} cycles`;
+    }
+
+    function drawBackground(t){
+      const w = innerWidth, h = innerHeight;
+      const g = bctx.createLinearGradient(0,0,0,h);
+      g.addColorStop(0, `rgba(14,36,72,${0.65 + Math.sin(t*0.0004)*0.04})`);
+      g.addColorStop(.35, 'rgba(11,27,50,.86)');
+      g.addColorStop(1, 'rgba(3,7,15,1)');
+      bctx.fillStyle = g;
+      bctx.fillRect(0,0,w,h);
+
+      // distant cloud layers
+      for (let i=0;i<7;i++){
+        const x = w*(i/6) + Math.sin(t*0.0003+i)*42 + (state.mouseX - w/2)*0.01;
+        const y = h*0.11 + i*40 + Math.cos(t*0.0004+i)*12;
+        const rg = bctx.createRadialGradient(x,y,12,x,y,220);
+        rg.addColorStop(0, 'rgba(180,220,255,.12)');
+        rg.addColorStop(.45, 'rgba(120,190,255,.05)');
+        rg.addColorStop(1, 'rgba(0,0,0,0)');
+        bctx.fillStyle = rg; bctx.beginPath(); bctx.arc(x,y,220,0,Math.PI*2); bctx.fill();
+      }
+
+      // sky rain
+      bctx.strokeStyle = 'rgba(130,190,255,.12)';
+      bctx.lineWidth = 1;
+      for (let i=0;i<220;i++){
+        const r = state.rain[i];
+        r.x += Math.sin(t*0.0003 + i)*0.12;
+        r.y += r.s*0.35;
+        if (r.y > h + 20){ r.y = -20; r.x = Math.random()*w; }
+        bctx.beginPath(); bctx.moveTo(r.x, r.y); bctx.lineTo(r.x-8, r.y + r.l); bctx.stroke();
+      }
+
+      // lightning horizon flicker
+      if (Math.random() < 0.02 || state.overcharged){
+        bctx.fillStyle = `rgba(120,200,255,${state.overcharged ? .12 : .04})`;
+        bctx.fillRect(0,0,w,h);
+      }
+    }
+
+    function drawRadarScene(t){
+      const w = radar.width / state.dpr, h = radar.height / state.dpr;
+      rctx.clearRect(0,0,w,h);
+      const bg = rctx.createLinearGradient(0,0,0,h);
+      bg.addColorStop(0,'rgba(7,15,28,.72)');
+      bg.addColorStop(1,'rgba(3,8,16,.9)');
+      rctx.fillStyle = bg;
+      rctx.fillRect(0,0,w,h);
+
+      // grid
+      rctx.save();
+      rctx.globalAlpha = .55;
+      rctx.strokeStyle = 'rgba(140,210,255,.10)';
+      for(let x=0;x<w;x+=40){ rctx.beginPath(); rctx.moveTo(x,0); rctx.lineTo(x,h); rctx.stroke(); }
+      for(let y=0;y<h;y+=40){ rctx.beginPath(); rctx.moveTo(0,y); rctx.lineTo(w,y); rctx.stroke(); }
+      rctx.restore();
+
+      // central storm hub
+      const cx = w*0.5, cy = h*0.5;
+      const rad = Math.min(w,h)*0.28 + Math.sin(t*0.001)*8;
+      const hub = rctx.createRadialGradient(cx,cy,0,cx,cy,rad*1.8);
+      hub.addColorStop(0, `rgba(103,232,255,${0.18 + state.charge*.001})`);
+      hub.addColorStop(.25, 'rgba(78,168,255,.14)');
+      hub.addColorStop(.55, 'rgba(255,215,106,.08)');
+      hub.addColorStop(1, 'rgba(0,0,0,0)');
+      rctx.fillStyle = hub;
+      rctx.beginPath(); rctx.arc(cx,cy,rad*1.8,0,Math.PI*2); rctx.fill();
+
+      // ring
+      rctx.strokeStyle = 'rgba(103,232,255,.55)'; rctx.lineWidth = 2;
+      rctx.beginPath(); rctx.arc(cx,cy,rad,0,Math.PI*2); rctx.stroke();
+      rctx.strokeStyle = 'rgba(255,215,106,.18)'; rctx.beginPath(); rctx.arc(cx,cy,rad*1.4,0,Math.PI*2); rctx.stroke();
+
+      // animated sweep
+      const sweep = (t*0.0007)%(Math.PI*2);
+      rctx.strokeStyle = 'rgba(103,232,255,.22)';
+      rctx.lineWidth = 2;
+      rctx.beginPath();
+      rctx.moveTo(cx,cy);
+      rctx.arc(cx,cy,rad*1.55, sweep-0.06, sweep+0.4);
+      rctx.stroke();
+
+      // islands / nodes
+      const mx = state.mouseX * (w/innerWidth);
+      const my = state.mouseY * (h/innerHeight);
+      for (const n of state.nodes){
+        const x = w*n.x, y = h*n.y;
+        const isHover = Math.hypot(mx-x,my-y) < 22;
+        const core = rctx.createRadialGradient(x,y,0,x,y,isHover ? 28 : 22);
+        const color = n.type === 'forge' ? '255,215,106' : n.type === 'spire' ? '103,232,255' : '142,255,176';
+        core.addColorStop(0, `rgba(${color},${isHover ? .95 : .8})`);
+        core.addColorStop(.45, `rgba(${color},.25)`);
+        core.addColorStop(1, 'rgba(0,0,0,0)');
+        rctx.fillStyle = core;
+        rctx.beginPath(); rctx.arc(x,y,isHover ? 28 : 22,0,Math.PI*2); rctx.fill();
+        rctx.strokeStyle = `rgba(${color},${n.active ? .78 : .24})`;
+        rctx.lineWidth = 2;
+        rctx.beginPath(); rctx.arc(x,y,14 + Math.sin(t*0.002+n.x*5)*2,0,Math.PI*2); rctx.stroke();
+        // connection line to hub
+        rctx.strokeStyle = `rgba(${color},.13)`;
+        rctx.lineWidth = 1.2;
+        rctx.beginPath(); rctx.moveTo(cx,cy); rctx.lineTo(x,y); rctx.stroke();
+        // label
+        rctx.fillStyle = isHover ? '#ffffff' : 'rgba(234,247,255,.78)';
+        rctx.font = '600 12px Inter, system-ui, sans-serif';
+        rctx.fillText(n.name, x + 12, y - 12);
+      }
+
+      // thunder arcs inside map
+      for (let i=state.arcs.length-1;i>=0;i--){
+        const a = state.arcs[i];
+        rctx.strokeStyle = `rgba(255,255,255,${a.life})`;
+        rctx.lineWidth = 2.4;
+        rctx.shadowBlur = 16; rctx.shadowColor = '#67e8ff';
+        rctx.beginPath();
+        a.pts.forEach((p,idx)=> idx ? rctx.lineTo(p[0]*(w/innerWidth), p[1]*(h/innerHeight)) : rctx.moveTo(p[0]*(w/innerWidth), p[1]*(h/innerHeight)));
+        rctx.stroke();
+        rctx.shadowBlur = 0;
+        a.life -= 0.03;
+        if (a.life <= 0) state.arcs.splice(i,1);
+      }
+
+      // energy bursts
+      for (let i=state.bursts.length-1;i>=0;i--){
+        const b = state.bursts[i];
+        b.r += 2.4;
+        b.life -= 0.02;
+        rctx.strokeStyle = `rgba(255,215,106,${Math.max(0,b.life)})`;
+        rctx.lineWidth = 2;
+        rctx.beginPath(); rctx.arc(b.x*(w/innerWidth), b.y*(h/innerHeight), b.r, 0, Math.PI*2); rctx.stroke();
+        rctx.strokeStyle = `rgba(103,232,255,${Math.max(0,b.life*.6)})`;
+        rctx.beginPath(); rctx.arc(b.x*(w/innerWidth), b.y*(h/innerHeight), b.r*0.72, 0, Math.PI*2); rctx.stroke();
+        if (b.life <= 0) state.bursts.splice(i,1);
+      }
+
+      // cursor pulse
+      const px = state.mouseX * (w/innerWidth), py = state.mouseY * (h/innerHeight);
+      const cursorGlow = rctx.createRadialGradient(px,py,0,px,py,120);
+      cursorGlow.addColorStop(0, 'rgba(103,232,255,.12)');
+      cursorGlow.addColorStop(1, 'rgba(0,0,0,0)');
+      rctx.fillStyle = cursorGlow; rctx.beginPath(); rctx.arc(px,py,120,0,Math.PI*2); rctx.fill();
+
+      // map controls line
+      rctx.fillStyle = 'rgba(255,255,255,.9)';
+      rctx.font = '600 12px Inter, system-ui, sans-serif';
+      rctx.fillText(`Charge ${Math.round(state.charge)}%  |  Stability ${Math.round(state.stability)}%  |  Temp ${Math.round(state.temp)}°`, 16, h - 18);
+    }
+
+    function drawTrend(){
+      const w = trend.width, h = trend.height;
+      tctx.clearRect(0,0,w,h);
+      const g = tctx.createLinearGradient(0,0,0,h);
+      g.addColorStop(0,'rgba(8,20,37,.95)');
+      g.addColorStop(1,'rgba(3,7,15,.95)');
+      tctx.fillStyle = g; tctx.fillRect(0,0,w,h);
+      // grid
+      tctx.strokeStyle = 'rgba(140,210,255,.08)';
+      for(let x=0;x<=w;x+=60){ tctx.beginPath(); tctx.moveTo(x,0); tctx.lineTo(x,h); tctx.stroke(); }
+      for(let y=0;y<=h;y+=52){ tctx.beginPath(); tctx.moveTo(0,y); tctx.lineTo(w,y); tctx.stroke(); }
+      // area line
+      const data = state.trend;
+      tctx.beginPath();
+      data.forEach((v,i)=>{
+        const x = (i/(data.length-1))*(w-32)+16;
+        const y = h - 16 - (v/100)*(h-38);
+        if(i===0) tctx.moveTo(x,y); else tctx.lineTo(x,y);
+      });
+      const grad = tctx.createLinearGradient(0,0,w,0);
+      grad.addColorStop(0,'rgba(103,232,255,.95)');
+      grad.addColorStop(.5,'rgba(255,215,106,.95)');
+      grad.addColorStop(1,'rgba(142,255,176,.95)');
+      tctx.strokeStyle = grad; tctx.lineWidth = 3.2; tctx.shadowBlur = 16; tctx.shadowColor = '#67e8ff'; tctx.stroke(); tctx.shadowBlur = 0;
+
+      // fill beneath
+      const area = tctx.createLinearGradient(0,0,0,h);
+      area.addColorStop(0,'rgba(103,232,255,.16)');
+      area.addColorStop(1,'rgba(103,232,255,0)');
+      tctx.lineTo(w-16,h-16); tctx.lineTo(16,h-16); tctx.closePath();
+      tctx.fillStyle = area; tctx.fill();
+
+      // last point
+      const last = data[data.length-1];
+      const lx = w-16, ly = h - 16 - (last/100)*(h-38);
+      const rg = tctx.createRadialGradient(lx,ly,0,lx,ly,18);
+      rg.addColorStop(0,'rgba(255,255,255,.98)');
+      rg.addColorStop(.4,'rgba(255,215,106,.9)');
+      rg.addColorStop(1,'rgba(0,0,0,0)');
+      tctx.fillStyle = rg; tctx.beginPath(); tctx.arc(lx,ly,18,0,Math.PI*2); tctx.fill();
+    }
+
+    function tick(ts){
+      state.t = ts;
+      const w = innerWidth, h = innerHeight;
+      // background entities
+      drawBackground(ts);
+      drawRadarScene(ts);
+      drawTrend();
+
+      // move clouds in background state
+      for (const c of state.clouds) {
+        c.x += c.vx + (state.mouseX - w/2) * 0.00018;
+        c.y += c.vy + Math.sin(ts*0.0004 + c.seed) * 0.03;
+        if (c.x < -220) c.x = w + 220;
+        if (c.x > w + 220) c.x = -220;
+        if (c.y < -80) c.y = h*0.45;
+        if (c.y > h*0.48) c.y = 40;
+      }
+
+      // live simulation
+      const ease = 0.08;
+      state.mouseX += (state.targetX - state.mouseX) * ease;
+      state.mouseY += (state.targetY - state.mouseY) * ease;
+
+      if (state.mode === 'Harvest') { state.charge += 0.04; state.yield += 0.12; state.temp += 0.12; }
+      if (state.mode === 'Defense') { state.shield += 0.04; state.stability += 0.02; state.risk -= 0.04; }
+      if (state.mode === 'Overcharge') { state.charge += 0.08; state.temp += 0.35; state.risk += 0.08; }
+      if (state.mode === 'Balanced') { state.stability += 0.01; }
+
+      // natural decay
+      state.charge = clamp(state.charge - 0.012, 0, 100);
+      state.load = clamp(state.load + (state.mode==='Overcharge'?0.05:-0.01), 0, 100);
+      state.shield = clamp(state.shield - 0.005 + (state.mode==='Defense'?0.03:0), 0, 100);
+      state.stability = clamp(state.stability - 0.01 + (state.mode==='Defense'?0.02:0), 0, 100);
+      state.reserve = clamp(state.reserve + (state.mode==='Harvest'?0.03:-0.015), 0, 100);
+      state.coverage = clamp(state.coverage + Math.sin(ts*0.0002)*0.01, 0, 100);
+      state.risk = clamp(state.risk + (state.temp > 1780 ? 0.06 : -0.03), 0, 100);
+      state.temp = Math.max(1100, state.temp - 0.08 + (state.mode==='Overcharge'?0.3:0));
+      state.yield += state.mode==='Harvest' ? 0.18 : 0.05;
+
+      // derived warnings
+      if (state.temp > 1760) state.status = 'hot';
+      if (state.temp > 1880) { state.seal = 0; }
+      if (state.stability < 68) els.statusHeadline.textContent = 'Structural stress detected';
+      else if (state.charge > 90) els.statusHeadline.textContent = 'Forge nearly saturated';
+      else if (state.mode === 'Defense') els.statusHeadline.textContent = 'Shield lattice engaged';
+      else if (state.mode === 'Harvest') els.statusHeadline.textContent = 'Lightning channels open';
+      else if (state.mode === 'Overcharge') els.statusHeadline.textContent = 'Core under high load';
+      else els.statusHeadline.textContent = 'Storm field stable';
+
+      els.statusDesc.textContent = state.mode === 'Overcharge'
+        ? 'Core heat is climbing rapidly. Use Emergency Calm if thermal pressure becomes unstable.'
+        : state.mode === 'Harvest'
+        ? 'Conduits are aligned for high-yield lightning intake and energy redirection.'
+        : state.mode === 'Defense'
+        ? 'Barrier arrays are reinforced. Turbulence will be deflected around the temple.'
+        : 'All systems balanced. Maintain route integrity and watch the storm ring.';
+
+      const date = new Date();
+      els.time.textContent = date.toISOString().slice(11,16);
+      els.anomalies.textContent = String(Math.max(1, Math.round(state.risk / 18))).padStart(2, '0');
+
+      // forecast changes
+      const ftxt = state.mode === 'Overcharge'
+        ? 'Forecast: violent charge buildup. Thunder lattice is primed for immediate discharge.'
+        : state.mode === 'Harvest'
+        ? 'Forecast: heavy lightning bands crossing the central sky-reef. Maximize collection windows.'
+        : state.mode === 'Defense'
+        ? 'Forecast: strong wind shear with moderate thunder. Ideal conditions for shield fortification.'
+        : 'Forecast: dense thunder banks over the eastern sky-reef. Lightning yield is optimal for harvesting.';
+      els.forecast.textContent = ftxt;
+
+      // weather labels
+      els.weatherState.textContent = state.temp > 1820 ? 'Thermal runaway risk' : state.mode === 'Overcharge' ? 'Thunderfront raging' : state.mode === 'Defense' ? 'Barrier storm' : 'Thunderfront emerging';
+      els.weatherDesc.textContent = state.temp > 1820 ? 'The forge is overheating. Redirect charge or engage emergency calm immediately.' : state.mode === 'Harvest' ? 'Low-pressure corridors are opening above the floating islands.' : state.mode === 'Defense' ? 'Static fields are reducing impact from incoming storm bands.' : 'Low pressure pockets are opening above the floating islands.';
+
+      // HUD values
+      updateMetrics();
+      requestAnimationFrame(tick);
+    }
+
+    function canvasPointerToRadar(x,y){
+      const rect = radar.getBoundingClientRect();
+      return {
+        x: (x - rect.left) * (radar.width / state.dpr / rect.width),
+        y: (y - rect.top) * (radar.height / state.dpr / rect.height)
+      };
+    }
+
+    radar.addEventListener('mousemove', (e)=>{
+      const p = canvasPointerToRadar(e.clientX, e.clientY);
+      const rect = radar.getBoundingClientRect();
+      const w = rect.width, h = rect.height;
+      const mx = p.x, my = p.y;
+      const closest = state.nodes.reduce((best,n)=>{
+        const x = n.x*w, y = n.y*h;
+        const d = Math.hypot(mx-x,my-y);
+        return d < best.d ? {d, n} : best;
+      }, {d:Infinity, n:null});
+      if (closest.n && closest.d < 24) {
+        els.mapHint.textContent = `${closest.n.name} online. Click to route power.`;
+      } else {
+        els.mapHint.textContent = 'Click an island node to route power. Drag your cursor across the storm to bend cloud currents.';
+      }
+      state.targetX = e.clientX;
+      state.targetY = e.clientY;
+    });
+
+    radar.addEventListener('mouseleave', ()=>{
+      els.mapHint.textContent = 'Click an island node to route power. Drag your cursor across the storm to bend cloud currents.';
+    });
+
+    radar.addEventListener('click', (e)=>{
+      const rect = radar.getBoundingClientRect();
+      const x = (e.clientX - rect.left)/rect.width, y = (e.clientY - rect.top)/rect.height;
+      const clicked = state.nodes.find(n => Math.hypot(x - n.x, y - n.y) < 0.04);
+      if (clicked) {
+        els.mapHint.textContent = `${clicked.name} activated.`;
+        if (clicked.type === 'forge') forgeCore();
+        else if (clicked.type === 'spire') harvestLightning();
+        else if (clicked.type === 'cloud') routeClouds();
+        else {
+          state.stability = clamp(state.stability + 4, 0, 100);
+          addLog('Storm anchor confirmed. Structural harmonics improved.', 'good');
+          updateMetrics();
+        }
+      } else {
+        state.arcs.push(makeArc(e.clientX, 0, e.clientX + rand(-90,90), e.clientY, 20));
+        state.bursts.push({x:e.clientX, y:e.clientY, r:0, life:1});
+        addLog('Atmospheric discharge triggered by manual scan.', 'info');
+      }
+    });
+
+    window.addEventListener('mousemove', (e)=>{ state.targetX = e.clientX; state.targetY = e.clientY; });
+    window.addEventListener('resize', resize);
+
+    $('harvestBtn').addEventListener('click', harvestLightning);
+    $('routeBtn').addEventListener('click', routeClouds);
+    $('shieldBtn').addEventListener('click', fortifyShields);
+    $('forgeBtn').addEventListener('click', forgeCore);
+    $('calmBtn').addEventListener('click', emergencyCalm);
+    $('pattern').addEventListener('change', (e)=> setMode(e.target.value));
+    $('forgeSlider').addEventListener('input', (e)=>{
+      state.charge = clamp(+e.target.value,0,100);
+      state.yield = clamp(90 + state.charge * 1.15, 0, 999);
+      state.temp = 1200 + state.charge * 6;
+      updateMetrics();
+      addLog(`Forge output manually set to ${e.target.value}%.`, 'info');
+    });
+
+    // boot
+    resize();
+    initScene();
+    state.logs = [
+      {msg:'Temple system boot complete. Cloud arrays stabilized.', time:new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit', second:'2-digit'}), tone:'good'},
+      {msg:'Lightning conductors online. Ready to harvest storm energy.', time:new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit', second:'2-digit'}), tone:'good'},
+      {msg:'Forge core temperature nominal. Awaiting command input.', time:new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit', second:'2-digit'}), tone:'info'}
+    ];
+    renderLogs();
+    updateMetrics();
+    setMode('Balanced');
+    addLog('Control center ready. The storm awaits your command.', 'info');
+    spawnInitialBurst();
+    requestAnimationFrame(tick);
+
+    function spawnInitialBurst(){
+      state.bursts.push({x:state.w*0.5, y:state.h*0.44, r:0, life:1.4});
+      state.arcs.push(makeArc(state.w*0.36, 0, state.w*0.6, state.h*0.32, 26));
+    }
+  </script>
+</body>
+</html>
